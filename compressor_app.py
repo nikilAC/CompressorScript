@@ -642,24 +642,18 @@ with col1:
 # Filter valid end dates based on the selected start date
 valid_end_dates = unique_dates[unique_dates >= start_date]
 
+if 'end_date' not in st.session_state:
+    st.session_state['end_date'] = min(valid_end_dates)
 # End date selector in the second column
 with col2:
-    try:   
-      end_date = st.date_input(
-      'End date',
-      min_value=min(valid_end_dates),
-      max_value=max(valid_end_dates),
-      value=max(old_end, min(valid_end_dates)),
-      help="Select the end date."
-      )
-    except: 
-      end_date = st.date_input(
-      'End date',
-      min_value=min(valid_end_dates),
-      max_value=max(valid_end_dates),
-      value=min(valid_end_dates),
-      help="Select the end date."
-      )
+    end_date = st.date_input(
+    'End date',
+    min_value=min(valid_end_dates),
+    max_value=max(valid_end_dates),
+    value=st.session_state['end date'],
+    help="Select the end date."
+    )
+
 
 
 if start_date > end_date:
@@ -668,7 +662,7 @@ if start_date > end_date:
     
 else:
     date_range = (end_date - start_date).days
-old_end = end_date
+st.session_state['end date'] = end_date
 
 dacCT = st.sidebar.number_input("Number of DAC Units", value = 8)
 minPctShutoff = st.sidebar.number_input("Minimum % Capacity Before Compressor Shutoff", value=10)
