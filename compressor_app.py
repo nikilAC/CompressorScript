@@ -661,9 +661,9 @@ else:
 
 
 dacCT = st.sidebar.number_input("Number of DAC Units", value = 8)
-minPctShutoff = st.sidebar.number_input("Minimum % Capacity Before Compressor Shutoff", value=10, placeholder = "10")
-maxPctTurndown = st.sidebar.number_input("Maximum % Capacity Before 50% Compressor Turndown", value=90, placeholder = "90")
-bladderVol = st.sidebar.number_input("Specify Bladder Volume (in m³)", value=23.2, placeholder = "23.2")
+minPctShutoff = st.sidebar.number_input("Minimum % Capacity Before Compressor Shutoff", value=10)
+maxPctTurndown = st.sidebar.number_input("Maximum % Capacity Before 50% Compressor Turndown", value=90)
+bladderVol = st.sidebar.number_input("Specify Bladder Volume (in m³)", value=23.2)
 # DOING IT WITHOUT STREAMLIT rhPath = input("Enter RH and Temperature File (.csv or .xlsx)")
 
 
