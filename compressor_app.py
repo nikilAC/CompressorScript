@@ -648,7 +648,6 @@ with col2:
     'End date',
     min_value=min(valid_end_dates),
     max_value=max(valid_end_dates),
-    value=min(valid_end_dates),
     help="Select the end date."
     )
 
