@@ -642,7 +642,7 @@ with col1:
 # Filter valid end dates based on the selected start date
 valid_end_dates = unique_dates[unique_dates >= start_date]
 
-if 'end_date' not in st.session_state:
+if 'end date' not in st.session_state:
   st.session_state['end date'] = min(valid_end_dates)
 # End date selector in the second column
 with col2:
