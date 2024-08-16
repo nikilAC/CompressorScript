@@ -650,7 +650,7 @@ with col2:
   'End date',
   min_value=min(valid_end_dates),
   max_value=max(valid_end_dates),
-  value=st.session_state['end date'],
+  value=max(valid_end_dates, st.session_state['end date']),
   help="Select the end date."
   )
 
