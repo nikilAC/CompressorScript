@@ -270,7 +270,7 @@ def volFlowEstimation(df, weatherData, DAC_ct=1, daterange=['2023-06-01', '2024-
   # Calculating CO2 Purity
   df["CO2_Purity-Corrected_m^3"] = df[" CO2_Fox_Litres"] * (df[" DAC_CO2_Percent"] / 100) * .001
 
-  # Calculating Kg Per Hour Again, Directly from CO2_Purity_corrected (/1000 to kg, /CycleSecs to cycle time, * 3600 to hour)
+  # Calculating m^3 Per Hour Again, Directly from CO2_Purity_corrected (/1000 to kg, /CycleSecs to cycle time, * 3600 to hour)
   df["CO2_m^3_Per_Hour"] = df["CO2_Purity-Corrected_m^3"] / df[" CycleSecs"] * 3600
 
   # Calculating Kg Per Day
@@ -324,7 +324,8 @@ def volFlowEstimation(df, weatherData, DAC_ct=1, daterange=['2023-06-01', '2024-
     #pivotScatter.add_trace(go.Scatter(x=contactPivotTbl["Average RH"], y=contactPivotTbl["Avg Production Volume (kg/h)"], mode='markers+lines', name = f"Contactor Type: {contactor}"))
 
     # Plotting hour-by-hour line/scatter plot
-    fig.add_trace(go.Scatter(x=weatherData["Timestamp"], y=weatherData["Interpolated_Value"] * DAC_ct, mode='markers+lines', name = f"Contactor Type: {contactor}", marker_color = colors[contactor], yaxis= 'y1'))
+    st.write("Would love to add a toggle marker option")
+    fig.add_trace(go.Scatter(x=weatherData["Timestamp"], y=weatherData["Interpolated_Value"], mode='lines', name = f"Contactor Type: {contactor}", marker_color = colors[contactor], yaxis= 'y1', connectgaps=False))
 
     # Create day-based table for 8 DACs
     dayMerge = weatherData.groupby("Date").agg({"Interpolated_Value": "sum"}).reset_index()
@@ -333,7 +334,7 @@ def volFlowEstimation(df, weatherData, DAC_ct=1, daterange=['2023-06-01', '2024-
 
     # Table with Bladder Capacity
     weatherData["Bladder Capacity"] = initial_capacity
-
+    
     minuteBladderTbl, bladderTbl = adjust_bladder_capacity_large(weatherData, init_speed, min_capacity_pct, capacity_flip_pct, bladder_volume, initial_capacity)
 
     minuteBladderTbl['Formatted Timestamp'] = minuteBladderTbl['Timestamp'].dt.strftime('%Y-%m-%d %H:%M:%S')
@@ -370,15 +371,17 @@ def volFlowEstimation(df, weatherData, DAC_ct=1, daterange=['2023-06-01', '2024-
             color='black'
         ),
       titlefont=dict(
-            size=15,  # Increase the font size here
+            size=20,  # Increase the font size here
             color='black'
         )),
-       yaxis = dict(tickfont=dict(
+       yaxis = dict(
+         range=[0, None],
+         tickfont=dict(
             size=15,  # Increase the font size here
             color='black'
         ),
       titlefont=dict(
-            size=15,  # Increase the font size here
+            size=20,  # Increase the font size here
             color='black'
         )),
 
@@ -521,7 +524,7 @@ def volFlowEstimation(df, weatherData, DAC_ct=1, daterange=['2023-06-01', '2024-
 
     freqBar.update_layout(
 
-
+    xaxis_title = "Date",
     legend=dict(font=dict(size= 15)),
     xaxis = dict(
                  tickfont=dict(
@@ -530,7 +533,7 @@ def volFlowEstimation(df, weatherData, DAC_ct=1, daterange=['2023-06-01', '2024-
         ),
 
     titlefont=dict(
-            size=15,  # Increase the font size here
+            size=20,  # Increase the font size here
             color='black'
         )),
 
@@ -539,7 +542,7 @@ def volFlowEstimation(df, weatherData, DAC_ct=1, daterange=['2023-06-01', '2024-
       barmode='group',
       bargap=.05,
       bargroupgap=.3,
-      xaxis_title = "Date",
+      
       yaxis_title = "Turn-Off Operations",
       yaxis=dict(
         tickmode='linear',
@@ -550,7 +553,7 @@ def volFlowEstimation(df, weatherData, DAC_ct=1, daterange=['2023-06-01', '2024-
             color='black'
     ),
             titlefont=dict(
-            size=15,  # Increase the font size here
+            size=20,  # Increase the font size here
             color='black'
         )),
       title={
@@ -598,7 +601,54 @@ def volFlowEstimation(df, weatherData, DAC_ct=1, daterange=['2023-06-01', '2024-
     dayBar.add_trace(go.Bar(x=dayMerge["Date"], y=dayMerge["Full 44.01 Interpolated Value"], marker_color = colors[contactor],  name = f"Contactor Type: {contactor}"))
 
 
-  fig.update_layout(xaxis_title = "Date", yaxis_title = "CO2 Production Volume (m³/h)")
+  fig.update_layout(
+    xaxis_title="Date",
+    yaxis_title="CO2 Production Volume (m³/h)",
+    yaxis = dict(
+      range=[0, None],
+                 tickfont=dict(
+            size=15,  # Increase the font size here
+            color='black'
+        ),
+         titlefont=dict(
+            size=20,  # Increase the font size here
+            color='black'
+        ),
+    ),
+    xaxis = dict(
+      
+                 tickfont=dict(
+            size=15,  # Increase the font size here
+            color='black'
+        ),
+         titlefont=dict(
+            size=20,  # Increase the font size here
+            color='black'
+        ),
+    ),
+
+      title={
+          'text': f'<b>CO2 Production</b>',
+          'y':.95,
+          'x':0.5,
+          'xanchor': 'center',
+          'yanchor': 'top',
+          'font': {
+              'size': 24,
+              'family': 'Arial, sans-serif',
+
+          }
+      },
+    
+      images=[dict(
+            source='https://assets-global.website-files.com/63c8119087b31650e9ba22d1/63c8119087b3160b9bba2367_logo_black.svg',  # Replace with your image URL or local path
+            xref='paper', yref='paper',
+            x=.95, y=1.1,
+            sizex=0.1, sizey=0.1,
+            xanchor='center', yanchor='bottom'
+        )]
+
+  )
   st.plotly_chart(fig, use_container_width=True)
   #fig.show()
 
