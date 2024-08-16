@@ -643,16 +643,16 @@ with col1:
 valid_end_dates = unique_dates[unique_dates >= start_date]
 
 if 'end_date' not in st.session_state:
-  st.session_state['end_date'] = min(valid_end_dates)
+  st.session_state['end date'] = min(valid_end_dates)
 # End date selector in the second column
 with col2:
-    end_date = st.date_input(
-    'End date',
-    min_value=min(valid_end_dates),
-    max_value=max(valid_end_dates),
-    value=st.session_state['end date'],
-    help="Select the end date."
-    )
+  end_date = st.date_input(
+  'End date',
+  min_value=min(valid_end_dates),
+  max_value=max(valid_end_dates),
+  value=st.session_state['end date'],
+  help="Select the end date."
+  )
 
 
 
