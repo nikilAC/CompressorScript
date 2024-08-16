@@ -8,3 +8,4 @@ httplib2==0.21.0
 ipython==8.5.0
 openpyxl
 distutils
+setuptools
