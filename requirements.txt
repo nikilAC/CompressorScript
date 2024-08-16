@@ -1,7 +1,7 @@
 streamlit==1.17.0
 pandas==1.5.3
 plotly==5.10.0
-numpy==2.0.1
+numpy==1.26.4
 boto3==1.26.3
 httplib2==0.21.0
 ipython==8.5.0
