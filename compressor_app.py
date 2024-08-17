@@ -74,7 +74,8 @@ def adjust_bladder_capacity_large(df, init_speed, min_capacity_pct, capacity_fli
 
 
     df_minutes = pd.DataFrame()
-    df_minutes['Timestamp'] = pd.date_range(start=df['Timestamp'].min(), end=df['Timestamp'].max(), freq='T')
+    if df.columns > 1:
+      df_minutes['Timestamp'] = pd.date_range(start=df['Timestamp'].min(), end=df['Timestamp'].max(), freq='T')
     df_minutes["Date"] = pd.to_datetime(df_minutes['Timestamp']).dt.date
     df_minutes = df_minutes.query('Date in @df["Date"]')
     df_minutes = pd.merge(df_minutes, df, on='Timestamp', how='left')
