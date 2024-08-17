@@ -55,7 +55,7 @@ def get_drive_data(weatherDataFile):
 
 
 # Adjusting the function to work efficiently on large datasets
-def adjust_bladder_capacity_large(df, init_speed, min_capacity_pct, capacity_flip_pct, bladder_volume, initial_capacity=0):
+def adjust_bladder_capacity_large(df, init_speed, min_capacity_pct, capacity_flip_pct, bladder_mass, initial_capacity=0):
 
 
 
@@ -67,7 +67,7 @@ def adjust_bladder_capacity_large(df, init_speed, min_capacity_pct, capacity_fli
     first = True
     curOn = False
     minute_decrement_added = init_speed / 60
-    low_decrement = 17.5/60
+    low_decrement = np.round(convM3toKg(17.5)/60, 2)
 
     # Add date column so we can filter data to only include dates that are actually in our RH data.
     df["Date"] = pd.to_datetime(df['Timestamp']).dt.date
@@ -79,19 +79,23 @@ def adjust_bladder_capacity_large(df, init_speed, min_capacity_pct, capacity_fli
     df_minutes = df_minutes.query('Date in @df["Date"]')
     df_minutes = pd.merge(df_minutes, df, on='Timestamp', how='left')
     df_minutes['HourTime'] = pd.to_datetime(df_minutes['Timestamp'].dt.strftime('%Y-%m-%d %H:00:00'))
+    df_minutes["rateDifference"] = 0
+
+
 
     # Forward fill the values to propagate the hourly values to each minute
     df_minutes.fillna(method='ffill', inplace=True)
 
     df_minutes["Interpolated_Value"] = df_minutes["Interpolated_Value"] / 60
     
-    min_capacity_value = bladder_volume * (min_capacity_pct / 100)
-    capacity_flip_value = bladder_volume * (capacity_flip_pct / 100)
+    min_capacity_value = bladder_mass * (min_capacity_pct / 100)
+    capacity_flip_value = bladder_mass * (capacity_flip_pct / 100)
+    nonzeroDecrement = low_decrement
     minute_decrement_added = 0
 
-        
     onOffList = []
     bladderCapacity = []
+    rateDiff =[]
     interp_Vals = np.array(df_minutes["Interpolated_Value"])
     # Minute-Wise
     for i in range(len(df_minutes) - 1):
@@ -104,18 +108,19 @@ def adjust_bladder_capacity_large(df, init_speed, min_capacity_pct, capacity_fli
           first = False
         
 
-        # Getting Current Interpolated Values
+        # Getting Current Interpolated Values (inlet CO2 Into Bladder)
         interpolated_value = interp_Vals[i]
 
         # Calculating current Value to add
         added_value = interpolated_value - minute_decrement_added
 
-        
+        rateDiff.append(nonzeroDecrement - interpolated_value)
 
         if curOn:
-          # Change to 17.5 if below capacity_flip_pct%, change to set speed if above
-          if minute_capacity / bladder_volume < (capacity_flip_pct / 100):
+          # Change to 17.5m^3 (or equiv in kg) if below capacity_flip_pct%, change to set speed if above
+          if minute_capacity / bladder_mass < (capacity_flip_pct / 100):
             minute_decrement_added = low_decrement
+            nonzeroDecrement = low_decrement
 
 
         if minute_capacity + added_value < min_capacity_value:
@@ -128,16 +133,17 @@ def adjust_bladder_capacity_large(df, init_speed, min_capacity_pct, capacity_fli
           curOn = False
         elif (minute_capacity + added_value) >= capacity_flip_value:
           # If Maximum capacity is 100, ensure we don't go above bladder volume
-          minute_capacity = min(bladder_volume, minute_capacity + added_value)
+          minute_capacity = min(bladder_mass, minute_capacity + added_value)
           # Set Decrement to highest possible value
           minute_decrement_added = init_speed / 60
+          nonzeroDecrement = init_speed / 60
           #df_minutes["OnOff"].iloc[i + 1] = "Compressor On"
           if curOn: 
             onOffList.append("Compressor On")
           # Still update minute capacity
           minute_capacity = minute_capacity + added_value
 
-          # If compressor is off, yet we are hitting bladder_volume+, turn it back on
+          # If compressor is off, yet we are hitting bladder_mass+, turn it back on
           if not curOn:
             #df_minutes["OnOff"].iloc[i + 1] = "Turned On"
             onOffList.append("Turned On")
@@ -149,6 +155,7 @@ def adjust_bladder_capacity_large(df, init_speed, min_capacity_pct, capacity_fli
         bladderCapacity.append(minute_capacity)
     df_minutes["Bladder Capacity"] = pd.Series(bladderCapacity)
     df_minutes["OnOff"] = pd.Series(onOffList)
+    df_minutes["rateDifference"] = pd.Series(rateDiff)
     #df_minutes["Bladder Capacity"].iloc[len(df_minutes) - 1] = 0  # Last row capacity set to 0 by default
     
 
@@ -162,17 +169,17 @@ def adjust_bladder_capacity_large(df, init_speed, min_capacity_pct, capacity_fli
     #     added_value = interpolated_value - decrement_added
 
     #     # Stop Compressor if capacity goes under minimum capacity until it is back at the value corresponding to capacity_flip_pct
-    #     if capacity + added_value <= bladder_volume * (min_capacity_pct / 100):
+    #     if capacity + added_value <= bladder_mass * (min_capacity_pct / 100):
     #         # If our minimum capacity is 0, ensure value doesn't go negative by setting it to 0
     #         if min_capacity_pct == 0:
-    #           capacity = bladder_volume
+    #           capacity = bladder_mass
     #         decrement_added = 0
     #         df["OnOff"].iloc[i + 1] = str(-1)
     #         curOn = False
-    #     elif (capacity + added_value) >= bladder_volume * (capacity_flip_pct / 100):
+    #     elif (capacity + added_value) >= bladder_mass * (capacity_flip_pct / 100):
     #         # If Maximum capacity is 100, ensure we don't go above bladder volume
     #         if capacity_flip_pct == 100:
-    #           capacity = bladder_volume
+    #           capacity = bladder_mass
     #         decrement_added = init_speed
     #         if curOn == False:
     #           df["OnOff"].iloc[i + 1] = str(1)
@@ -187,14 +194,30 @@ def adjust_bladder_capacity_large(df, init_speed, min_capacity_pct, capacity_fli
     # df["Bladder Capacity"].iloc[len(df) - 1] = 0  # Last row capacity set to 0 by default
     
     return df_minutes, df
+def convM3toKg(volume):
+  # Convert to Liters
+  volume *= 1000
 
-def volFlowEstimation(df, weatherData, DAC_ct=1, daterange=['2023-06-01', '2024-02-01'], init_speed=17.5, min_capacity_pct = 10, capacity_flip_pct=90, bladder_volume=23.2,  initial_capacity=0):
+  # Convert to Grams
+  mass = volume * 1.8307 
 
+  # Convert to Kg
+  return mass / 1000
+
+def volFlowEstimation(df, weatherData, DAC_ct=1, daterange=['2023-06-01', '2024-02-01'], init_speed=17.5, min_capacity_pct = 10, capacity_flip_pct=90, bladder_mass=23.2,  initial_capacity=0):
+
+
+ 
+  init_speed = np.round(convM3toKg(init_speed), 2)
+  bladder_mass = np.round(convM3toKg(bladder_mass), 2)
+  low_speed = np.round(convM3toKg(17.5), 2)
+  
+  
   #Dictionaries    
   
    # Changing initial capacity in case it is lower than the minimun capacity we want to have
-  if initial_capacity < (min_capacity_pct / 100) * bladder_volume:
-    initial_capacity = (min_capacity_pct/ 100) * bladder_volume
+  if initial_capacity < (min_capacity_pct / 100) * bladder_mass:
+    initial_capacity = (min_capacity_pct/ 100) * bladder_mass
   pd.options.mode.chained_assignment = None
   #Dictionaries
 
@@ -266,19 +289,19 @@ def volFlowEstimation(df, weatherData, DAC_ct=1, daterange=['2023-06-01', '2024-
   # RHData.loc[-8] = 	["5/1/2023 12:00",	33.2,	46]
   # RHData.loc[-9] = 	["5/1/2023 12:00",	15.7,	18]
   
+  # Calculating CO2 Purity (/1000 to kg)
+  df["CO2_Purity-Corrected_Kg"] = df[" CO2_Fox_g"] * (df[" DAC_CO2_Percent"] / 100) / 1000
 
-  # Calculating CO2 Purity
-  df["CO2_Purity-Corrected_m^3"] = df[" CO2_Fox_Litres"] * (df[" DAC_CO2_Percent"] / 100) * .001
-
-  # Calculating m^3 Per Hour Again, Directly from CO2_Purity_corrected (/1000 to kg, /CycleSecs to cycle time, * 3600 to hour)
-  df["CO2_m^3_Per_Hour"] = df["CO2_Purity-Corrected_m^3"] / df[" CycleSecs"] * 3600
+  # Calculating kg Per Hour Again, Directly from CO2_Purity_corrected (CycleSecs to cycle time, * 3600 to hour)
+  df["CO2_Kg_Per_Hour"] = df["CO2_Purity-Corrected_Kg"] / df[" CycleSecs"] * 3600
 
   # Calculating Kg Per Day
-  df["CO2_m^3_Per_Day"] = df["CO2_m^3_Per_Hour"] * 24
+  df["CO2_Kg_Per_Day"] = df["CO2_Kg_Per_Hour"] * 24
 
   # Making various figures
   fig = go.Figure()
   dayBar = go.Figure()
+  diffFig = go.Figure()
   freqBar = go.Figure()
 
   for contactor in df["Contactor Type"].unique():
@@ -292,7 +315,7 @@ def volFlowEstimation(df, weatherData, DAC_ct=1, daterange=['2023-06-01', '2024-
       contactDf = contactDf.query('`Contactor Type` == @contactor')
 
     # Creating coefficients based on RH
-    poly_fit = np.polyfit(contactDf[" AirRelHumid_In"], contactDf["CO2_m^3_Per_Hour"], deg=3)
+    poly_fit = np.polyfit(contactDf[" AirRelHumid_In"], contactDf["CO2_Kg_Per_Hour"], deg=3)
 
     # Find maximum and minimum RH Values in Operational data, so we can set any values not between these to one or the other
     maxRH = contactDf[' AirRelHumid_In'].max()
@@ -314,18 +337,30 @@ def volFlowEstimation(df, weatherData, DAC_ct=1, daterange=['2023-06-01', '2024-
     weatherData = weatherData.query('@daterange[1] > Timestamp > @daterange[0]').sort_values(by="Timestamp")
 
 
+
     # Calculating Values for Interpolation: (y2 - y1) / (x2 - x1) * (x - x1) + y1 = y
 
     model = np.poly1d(poly_fit)
     weatherData["Interpolated_Value"] = model(weatherData["RH_percent"]) * DAC_ct
-    minimumRH = weatherData["Interpolated_Value"].min()
+      
+    # Create a complete date range, including the missing dates
+    full_dates = pd.date_range(start=min(weatherData["Timestamp"]), end=max(weatherData["Timestamp"]), freq='H')
+
+    plottedCopy = weatherData.copy()
+
+    plottedCopy.index = plottedCopy["Timestamp"]
+
+    # Reindex the DataFrame to include the full date range, filling missing entries with None
+    plottedDataWeather = plottedCopy.reindex(full_dates, fill_value=None)
 
     # Plotting average RH Values of NCCC Data
     #pivotScatter.add_trace(go.Scatter(x=contactPivotTbl["Average RH"], y=contactPivotTbl["Avg Production Volume (kg/h)"], mode='markers+lines', name = f"Contactor Type: {contactor}"))
 
     # Plotting hour-by-hour line/scatter plot
     st.write("Would love to add a toggle marker option")
-    fig.add_trace(go.Scatter(x=weatherData["Timestamp"], y=weatherData["Interpolated_Value"], mode='lines', name = f"Contactor Type: {contactor}", marker_color = colors[contactor], yaxis= 'y1', connectgaps=False))
+    
+    fig.add_trace(go.Scatter(x=plottedDataWeather["Timestamp"], y=plottedDataWeather["Interpolated_Value"], mode='lines', name = f"Contactor Type: {contactor}", marker_color = colors[contactor], yaxis= 'y1', connectgaps=False))
+    
 
     # Create day-based table for 8 DACs
     dayMerge = weatherData.groupby("Date").agg({"Interpolated_Value": "sum"}).reset_index()
@@ -335,25 +370,103 @@ def volFlowEstimation(df, weatherData, DAC_ct=1, daterange=['2023-06-01', '2024-
     # Table with Bladder Capacity
     weatherData["Bladder Capacity"] = initial_capacity
     
-    minuteBladderTbl, bladderTbl = adjust_bladder_capacity_large(weatherData, init_speed, min_capacity_pct, capacity_flip_pct, bladder_volume, initial_capacity)
+    minuteBladderTbl, bladderTbl = adjust_bladder_capacity_large(weatherData, init_speed, min_capacity_pct, capacity_flip_pct, bladder_mass, initial_capacity)
+
+
+
+
+
+    #iffFig.add_trace(go.Scatter()
+
 
     minuteBladderTbl['Formatted Timestamp'] = minuteBladderTbl['Timestamp'].dt.strftime('%Y-%m-%d %H:%M:%S')
     bladderTbl['Formatted Timestamp'] = bladderTbl['Timestamp'].dt.strftime('%Y-%m-%d %H:%M:%S')
 
     # Minute Based Bladder Capacity
 
+    diffFig = px.scatter(minuteBladderTbl[["Formatted Timestamp", "HourTime", "rateDifference"]].groupby("HourTime").agg("sum").reset_index(), x = "HourTime", y = "rateDifference", title = "Difference in Outlet and Inlet Bladder CO2 Mass (kg)",  template = "plotly_white" ,
+                 
+                labels={
+                     "Bladder Capacity": "Mass Difference (kg)",
+                     
+                     "HourTime": "Time"
+                 })
+
+    diffFig.update_layout(
+      yaxis_title="Mass difference (kg)",
+      title={
+          'text': f'<b>Bladder Inlet/Outlet Mass Difference Per Hour (kg)</b>',
+          'y':.95,
+          'x':0.5,
+          'xanchor': 'center',
+          'yanchor': 'top',
+          'font': {
+              'size': 24,
+              'family': 'Arial, sans-serif',
+
+          }
+      },
+      legend=dict(font=dict(size= 15)),
+
+      xaxis = dict(tickfont=dict(
+            size=15,  # Increase the font size here
+            color='black'
+        ),
+      titlefont=dict(
+            size=20,  # Increase the font size here
+            color='black'
+        )),
+       yaxis = dict(
+         range = [0, None],
+         tickfont=dict(
+            size=15,  # Increase the font size here
+            color='black'
+        ),
+      titlefont=dict(
+            size=20,  # Increase the font size here
+            color='black'
+        )),
+
+      annotations=[
+        dict(
+            text=f'Type {contactor} | {DAC_ct} DAC | {init_speed}:{low_speed} kg/h Compressor Flow Rate',
+            x=0.475,
+            y=1.1,
+            xref='paper',
+            xanchor = 'center',
+            yanchor = 'top',
+            yref='paper',
+            showarrow=False,
+            font=dict(
+                size=16,
+                color='black',
+                family = 'Arial, sans-serif'
+            )
+        ),
+
+    
+    ],
+      images=[dict(
+            source='https://assets-global.website-files.com/63c8119087b31650e9ba22d1/63c8119087b3160b9bba2367_logo_black.svg',  # Replace with your image URL or local path
+            xref='paper', yref='paper',
+            x=.95, y=1.1,
+            sizex=0.1, sizey=0.1,
+            xanchor='center', yanchor='bottom'
+        )]
+    )
+    
     # Plot minute-based bladder capacity
-    minuteBladderCapacityFig = px.scatter(minuteBladderTbl, x = "Formatted Timestamp", y = "Bladder Capacity", title = "Bladder Volume Simulation (m³)", color = "OnOff", template = "plotly_white",  color_discrete_sequence=['darkred', 'red', 'green','lightgreen'] ,
+    minuteBladderCapacityFig = px.scatter(minuteBladderTbl, x = "Formatted Timestamp", y = "Bladder Capacity", title = "Bladder Mass Simulation (kg)", color = "OnOff", template = "plotly_white",  color_discrete_sequence=['darkred', 'red', 'green','lightgreen'] ,
                  opacity=0.7,
                 labels={
-                     "Bladder Capacity": "Bladder Volume (m³)",
+                     "Bladder Capacity": "Bladder Mass (kg)",
                      "OnOff": "Status",
                      "Formatted Timestamp": "Time"
                  })
 
     minuteBladderCapacityFig.update_layout(
       title={
-          'text': f'<b>Bladder Volume Simulation (m³)</b>',
+          'text': f'<b>Bladder Mass Simulation (kg)</b>',
           'y':.95,
           'x':0.479,
           'xanchor': 'center',
@@ -387,7 +500,7 @@ def volFlowEstimation(df, weatherData, DAC_ct=1, daterange=['2023-06-01', '2024-
 
       annotations=[
         dict(
-            text=f'Type {contactor} | {DAC_ct} DAC | {init_speed}:17.5 m³/h Compressor Flow Rate | Bladder Volume: {bladder_volume} m³',
+            text=f'Type {contactor} | {DAC_ct} DAC | {init_speed}:{low_speed} kg/h Compressor Flow Rate | Bladder Mass: {bladder_mass} kg',
             x=0.5,
             y=1.1,
             xref='paper',
@@ -407,7 +520,7 @@ def volFlowEstimation(df, weatherData, DAC_ct=1, daterange=['2023-06-01', '2024-
           x=minuteBladderTbl['Formatted Timestamp'].max(),  # Place it at the end of the x-axis
           xanchor = 'left',
           yanchor = 'middle',
-          y=(capacity_flip_pct / 100) * bladder_volume,
+          y=(capacity_flip_pct / 100) * bladder_mass,
           text=f"{capacity_flip_pct}% Bladder Capacity",
           showarrow=False,
           yshift=9,  # Shift text upwards
@@ -419,7 +532,7 @@ def volFlowEstimation(df, weatherData, DAC_ct=1, daterange=['2023-06-01', '2024-
           x=minuteBladderTbl['Formatted Timestamp'].max(),  # Place it at the end of the x-axis
           xanchor = 'left',
           yanchor = 'middle',
-          y=bladder_volume,
+          y=bladder_mass,
           text=f"Maximum Bladder Capacity",
           showarrow=False,
           yshift=9,  # Shift text upwards
@@ -431,7 +544,7 @@ def volFlowEstimation(df, weatherData, DAC_ct=1, daterange=['2023-06-01', '2024-
           x=minuteBladderTbl['Formatted Timestamp'].max(),  # Place it at the end of the x-axis
           xanchor = 'left',
           yanchor = 'middle',
-          y=(min_capacity_pct / 100) * bladder_volume,
+          y=(min_capacity_pct / 100) * bladder_mass,
           text=f"{min_capacity_pct}% Bladder Capacity",
           showarrow=False,
           yshift=9,  # Shift text upwards
@@ -451,9 +564,9 @@ def volFlowEstimation(df, weatherData, DAC_ct=1, daterange=['2023-06-01', '2024-
     minuteBladderCapacityFig.add_shape(
           type='line',
           x0=minuteBladderTbl['Formatted Timestamp'].min(),
-          y0=(capacity_flip_pct / 100) * bladder_volume,
+          y0=(capacity_flip_pct / 100) * bladder_mass,
           x1=minuteBladderTbl['Formatted Timestamp'].max(),
-          y1=(capacity_flip_pct / 100) * bladder_volume,
+          y1=(capacity_flip_pct / 100) * bladder_mass,
           line=dict(
               color="RoyalBlue",
               width=2,
@@ -466,9 +579,9 @@ def volFlowEstimation(df, weatherData, DAC_ct=1, daterange=['2023-06-01', '2024-
     minuteBladderCapacityFig.add_shape(
           type='line',
           x0=minuteBladderTbl['Formatted Timestamp'].min(),
-          y0=bladder_volume,
+          y0=bladder_mass,
           x1=minuteBladderTbl['Formatted Timestamp'].max(),
-          y1=bladder_volume,
+          y1=bladder_mass,
           line=dict(
               color="purple",
               width=2,
@@ -479,9 +592,9 @@ def volFlowEstimation(df, weatherData, DAC_ct=1, daterange=['2023-06-01', '2024-
     minuteBladderCapacityFig.add_shape(
           type='line',
           x0=minuteBladderTbl['Formatted Timestamp'].min(),
-          y0=(min_capacity_pct / 100) * bladder_volume,
+          y0=(min_capacity_pct / 100) * bladder_mass,
           x1=minuteBladderTbl['Formatted Timestamp'].max(),
-          y1=(min_capacity_pct / 100) * bladder_volume,
+          y1=(min_capacity_pct / 100) * bladder_mass,
           line=dict(
               color="purple",
               width=2,
@@ -500,6 +613,7 @@ def volFlowEstimation(df, weatherData, DAC_ct=1, daterange=['2023-06-01', '2024-
 
     #minuteBladderCapacityFig.show()
     st.plotly_chart(minuteBladderCapacityFig, use_container_width=True)
+    st.plotly_chart(diffFig, use_container_width=True)
 
     # Adding Production line to fig
     #fig.add_trace(go.Scatter(x = minuteBladderTbl["Formatted Timestamp"], y = minuteBladderTbl["Interpolated_Value"], mode = 'markers'))
@@ -570,7 +684,7 @@ def volFlowEstimation(df, weatherData, DAC_ct=1, daterange=['2023-06-01', '2024-
       },
       annotations=[
         dict(
-            text=f'Type {contactor} | {DAC_ct} DAC | {init_speed}:17.5 m³/h Compressor Flow Rate | Bladder Volume: {bladder_volume} m³ | Average Daily Turn-Off Operations: <b>{np.round(np.mean(dailyFreqTable["Turned Off"]), 2)}<b>',
+            text=f'Type {contactor} | {DAC_ct} DAC | {init_speed}:{low_speed} kg/h Compressor Flow Rate | Bladder Volume: {bladder_mass} kg | Average Daily Turn-Off Operations: <b>{np.round(np.mean(dailyFreqTable["Turned Off"]), 2)}<b>',
             x=0.5,
             y=1.1,
             xref='paper',
@@ -603,7 +717,7 @@ def volFlowEstimation(df, weatherData, DAC_ct=1, daterange=['2023-06-01', '2024-
 
   fig.update_layout(
     xaxis_title="Date",
-    yaxis_title="CO2 Production Volume (m³/h)",
+    yaxis_title="CO2 Production Volume (kg/h)",
     yaxis = dict(
       range=[0, None],
                  tickfont=dict(
@@ -652,7 +766,7 @@ def volFlowEstimation(df, weatherData, DAC_ct=1, daterange=['2023-06-01', '2024-
   st.plotly_chart(fig, use_container_width=True)
   #fig.show()
 
-  dayBar.update_layout(xaxis_title = "Date", yaxis_title = "CO2 Production Volume (m³)", barmode = "group",   bargap = .2, legend = dict(groupclick = "toggleitem"))
+  dayBar.update_layout(xaxis_title = "Date", yaxis_title = "CO2 Production Volume (kg)", barmode = "group",   bargap = .2, legend = dict(groupclick = "toggleitem"))
   st.plotly_chart(dayBar, use_container_width=True)
   #dayBar.show()
 
@@ -660,7 +774,7 @@ def volFlowEstimation(df, weatherData, DAC_ct=1, daterange=['2023-06-01', '2024-
 
 
 
-#df, rhPath, DAC_ct=1, daterange=['2023-06-01', '2024-02-01'], init_speed=17.5, min_capacity_pct = 10, capacity_flip_pct=90, bladder_volume=23.2,  initial_capacity=0
+#df, rhPath, DAC_ct=1, daterange=['2023-06-01', '2024-02-01'], init_speed=17.5, min_capacity_pct = 10, capacity_flip_pct=90, bladder_mass=23.2,  initial_capacity=0
 
 
 import time
@@ -717,7 +831,7 @@ st.session_state['end date'] = end_date
 dacCT = st.sidebar.number_input("Number of DAC Units", value = 8)
 minPctShutoff = st.sidebar.number_input("Minimum % Capacity Before Compressor Shutoff", value=10)
 maxPctTurndown = st.sidebar.number_input("Maximum % Capacity Before 50% Compressor Turndown", value=90)
-bladderVol = st.sidebar.number_input("Specify Bladder Volume (in m³)", value=23.2)
+bladderVol = st.sidebar.number_input("Specify Bladder Volume (in kg)", value=23.2)
 # DOING IT WITHOUT STREAMLIT rhPath = input("Enter RH and Temperature File (.csv or .xlsx)")
 
 
