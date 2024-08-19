@@ -75,9 +75,7 @@ def adjust_bladder_capacity_large(df, init_speed, min_capacity_pct, capacity_fli
 
     df_minutes = pd.DataFrame()
 
-    # very temporary fix
-    if df.columns > 1:
-      df_minutes['Timestamp'] = pd.date_range(start=df['Timestamp'].min(), end=df['Timestamp'].max(), freq='T')
+    df_minutes['Timestamp'] = pd.date_range(start=df['Timestamp'].min(), end=df['Timestamp'].max(), freq='T')
     df_minutes["Date"] = pd.to_datetime(df_minutes['Timestamp']).dt.date
     df_minutes = df_minutes.query('Date in @df["Date"]')
     df_minutes = pd.merge(df_minutes, df, on='Timestamp', how='left')
@@ -158,7 +156,8 @@ def adjust_bladder_capacity_large(df, init_speed, min_capacity_pct, capacity_fli
         bladderCapacity.append(minute_capacity)
     df_minutes["Bladder Capacity"] = pd.Series(bladderCapacity)
     df_minutes["OnOff"] = pd.Series(onOffList)
-    df_minutes["rateDifference"] = pd.Series(rateDiff)
+    rateDiff = pd.Series(rateDiff)
+    df_minutes["rateDifference"] = rateDiff
     #df_minutes["Bladder Capacity"].iloc[len(df_minutes) - 1] = 0  # Last row capacity set to 0 by default
     
 
@@ -386,8 +385,9 @@ def volFlowEstimation(df, weatherData, DAC_ct=1, daterange=['2023-06-01', '2024-
     bladderTbl['Formatted Timestamp'] = bladderTbl['Timestamp'].dt.strftime('%Y-%m-%d %H:%M:%S')
 
     # Minute Based Bladder Capacity
+    diffBladderTbl = minuteBladderTbl[["Formatted Timestamp", "HourTime", "rateDifference"]].groupby("HourTime").agg("sum").reset_index()
 
-    diffFig = px.scatter(minuteBladderTbl[["Formatted Timestamp", "HourTime", "rateDifference"]].groupby("HourTime").agg("sum").reset_index(), x = "HourTime", y = "rateDifference", title = "Difference in Outlet and Inlet Bladder CO2 Mass (kg)",  template = "plotly_white" ,
+    diffFig = px.scatter(diffBladderTbl, x = "HourTime", y = "rateDifference", title = "Difference in Outlet and Inlet Bladder CO2 Mass (kg)",  template = "plotly_white" ,
                  
                 labels={
                      "Bladder Capacity": "Mass Difference (kg)",
@@ -616,6 +616,8 @@ def volFlowEstimation(df, weatherData, DAC_ct=1, daterange=['2023-06-01', '2024-
 
     #minuteBladderCapacityFig.show()
     st.plotly_chart(minuteBladderCapacityFig, use_container_width=True)
+    
+    st.dataframe(diffBladderTbl["rateDifference"][lambda x: x > 0].describe())
     st.plotly_chart(diffFig, use_container_width=True)
 
     # Adding Production line to fig
@@ -781,9 +783,13 @@ def volFlowEstimation(df, weatherData, DAC_ct=1, daterange=['2023-06-01', '2024-
 
 
 import time
-
 weatherDataFile = st.sidebar.selectbox("Choose Weather File", get_bucket_list("weatherdatabucket"))
-df, weatherData = get_drive_data(weatherDataFile)
+if 'df' not in st.session_state or st.session_state["oldWeather"] != weatherDataFile:
+  st.session_state.oldWeather = weatherDataFile
+  st.session_state.df, st.session_state.weatherData = get_drive_data(weatherDataFile)
+
+df, weatherData = st.session_state["df"], st.session_state["weatherData"]
+
 
 # Extract unique dates
 unique_dates = sorted(weatherData['Timestamp'])
@@ -831,15 +837,15 @@ else:
     date_range = (end_date - start_date).days
 st.session_state['end date'] = end_date
 
-dacCT = st.sidebar.number_input("Number of DAC Units", value = 8)
-minPctShutoff = st.sidebar.number_input("Minimum % Capacity Before Compressor Shutoff", value=10)
-maxPctTurndown = st.sidebar.number_input("Maximum % Capacity Before 50% Compressor Turndown", value=90)
-bladderVol = st.sidebar.number_input("Specify Bladder Volume (in kg)", value=23.2)
-# DOING IT WITHOUT STREAMLIT rhPath = input("Enter RH and Temperature File (.csv or .xlsx)")
 
-
-if st.button("Generate"):
-  with st.spinner('Calculating...'):
-    time.sleep(5)
-    volFlowEstimation(df, weatherData, dacCT, [start_date, end_date], 35, minPctShutoff, maxPctTurndown, bladderVol, 0)
+with st.form(key = "Standard User Input"):
+  dacCT = st.sidebar.number_input("Number of DAC Units", value = 8)
+  minPctShutoff = st.sidebar.number_input("Minimum % Capacity Before Compressor Shutoff", value=10)
+  maxPctTurndown = st.sidebar.number_input("Maximum % Capacity Before 50% Compressor Turndown", value=90)
+  bladderVol = st.sidebar.number_input("Specify Bladder Volume (in kg)", value=23.2)
+  # DOING IT WITHOUT STREAMLIT rhPath = input("Enter RH and Temperature File (.csv or .xlsx)")
+  if st.form_submit_button("Generate"):
+    with st.spinner('Calculating...'):
+      time.sleep(5)
+      volFlowEstimation(df, weatherData, dacCT, [start_date, end_date], 35, minPctShutoff, maxPctTurndown, bladderVol, 0)
 
