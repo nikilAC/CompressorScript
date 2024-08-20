@@ -840,7 +840,7 @@ with st.form(key = "Standard User Input"):
   dacCT = st.sidebar.number_input("Number of DAC Units", value = 8)
   minPctShutoff = st.sidebar.number_input("Minimum % Capacity Before Compressor Shutoff", value=10)
   maxPctTurndown = st.sidebar.number_input("Maximum % Capacity Before 50% Compressor Turndown", value=90)
-  bladderVol = st.sidebar.number_input("Specify Bladder Volume (in kg)", value=42.47)
+  bladderVol = st.sidebar.number_input("Specify Bladder Mass (in kg)", value=42.47)
   # DOING IT WITHOUT STREAMLIT rhPath = input("Enter RH and Temperature File (.csv or .xlsx)")
   if st.form_submit_button("Generate"):
     with st.spinner('Calculating...'):
