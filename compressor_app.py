@@ -381,80 +381,10 @@ def volFlowEstimation(df, weatherData, DAC_ct=1, daterange=['2023-06-01', '2024-
 
     minuteBladderTbl['Formatted Timestamp'] = minuteBladderTbl['Timestamp'].dt.strftime('%Y-%m-%d %H:%M:%S')
     bladderTbl['Formatted Timestamp'] = bladderTbl['Timestamp'].dt.strftime('%Y-%m-%d %H:%M:%S')
-
-    # Minute Based Bladder Capacity
-    diffBladderTbl = minuteBladderTbl[["Formatted Timestamp", "HourTime", "rateDifference"]].groupby("HourTime").agg("sum").reset_index()
-
-    diffFig = px.scatter(diffBladderTbl, x = "HourTime", y = "rateDifference", title = "Difference in Outlet and Inlet Bladder CO2 Mass (kg)",  template = "plotly_white" ,
-                 
-                labels={
-                     "Bladder Capacity": "Mass Difference (kg)",
-                     
-                     "HourTime": "Time"
-                 })
-
-    diffFig.update_layout(
-      yaxis_title="Mass difference (kg)",
-      title={
-          'text': f'<b>Bladder Inlet/Outlet Mass Difference Per Hour (kg)</b>',
-          'y':.95,
-          'x':0.5,
-          'xanchor': 'center',
-          'yanchor': 'top',
-          'font': {
-              'size': 24,
-              'family': 'Arial, sans-serif',
-
-          }
-      },
-      legend=dict(font=dict(size= 15)),
-
-      xaxis = dict(tickfont=dict(
-            size=15,  # Increase the font size here
-            color='black'
-        ),
-      titlefont=dict(
-            size=20,  # Increase the font size here
-            color='black'
-        )),
-       yaxis = dict(
-         range = [0, None],
-         tickfont=dict(
-            size=15,  # Increase the font size here
-            color='black'
-        ),
-      titlefont=dict(
-            size=20,  # Increase the font size here
-            color='black'
-        )),
-
-      annotations=[
-        dict(
-            text=f'Type {contactor} | {DAC_ct} DAC | {init_speed}:{low_speed} kg/h Compressor Flow Rate',
-            x=0.475,
-            y=1.1,
-            xref='paper',
-            xanchor = 'center',
-            yanchor = 'top',
-            yref='paper',
-            showarrow=False,
-            font=dict(
-                size=16,
-                color='black',
-                family = 'Arial, sans-serif'
-            )
-        ),
-
     
-    ],
-      images=[dict(
-            source='https://assets-global.website-files.com/63c8119087b31650e9ba22d1/63c8119087b3160b9bba2367_logo_black.svg',  # Replace with your image URL or local path
-            xref='paper', yref='paper',
-            x=.95, y=1.1,
-            sizex=0.1, sizey=0.1,
-            xanchor='center', yanchor='bottom'
-        )]
-    )
+    # Adding for day-based granularity
+    minuteBladderTbl["Date"] = minuteBladderTbl["Timestamp"].dt.date.astype(str)
+
     
     # Plot minute-based bladder capacity
     minuteBladderCapacityFig = px.scatter(minuteBladderTbl, x = "Formatted Timestamp", y = "Bladder Capacity", title = "Bladder Mass Simulation (kg)", color = "OnOff", template = "plotly_white",  color_discrete_sequence=['darkred', 'red', 'green','lightgreen'] ,
@@ -611,13 +541,158 @@ def volFlowEstimation(df, weatherData, DAC_ct=1, daterange=['2023-06-01', '2024-
         lambda trace: trace.update(marker=dict(size=8)) if "Turned" in trace.name else trace.update(marker=dict(size=5))
     )
 
+ #######################################################################
 
+ # Hour Based Bladder Mass Difference
+    diffBladderTbl = minuteBladderTbl[["Formatted Timestamp", "HourTime", "rateDifference"]].groupby("HourTime").agg("sum").reset_index()
+
+    diffFig = px.scatter(diffBladderTbl, x = "HourTime", y = "rateDifference", title = "Difference in Outlet and Inlet Bladder CO2 Mass (kg)",  template = "plotly_white" ,
+                 
+                labels={
+                     "Bladder Capacity": "Mass Difference (kg)",
+                     
+                     "HourTime": "Time"
+                 })
+
+    diffFig.update_layout(
+      yaxis_title="Mass difference (kg)",
+      title={
+          'text': f'<b>Bladder Inlet/Outlet Mass Difference Per Hour (kg)</b>',
+          'y':.95,
+          'x':0.5,
+          'xanchor': 'center',
+          'yanchor': 'top',
+          'font': {
+              'size': 24,
+              'family': 'Arial, sans-serif',
+
+          }
+      },
+      legend=dict(font=dict(size= 15)),
+
+      xaxis = dict(tickfont=dict(
+            size=15,  # Increase the font size here
+            color='black'
+        ),
+      titlefont=dict(
+            size=20,  # Increase the font size here
+            color='black'
+        )),
+       yaxis = dict(
+         range = [0, None],
+         tickfont=dict(
+            size=15,  # Increase the font size here
+            color='black'
+        ),
+      titlefont=dict(
+            size=20,  # Increase the font size here
+            color='black'
+        )),
+
+      annotations=[
+        dict(
+            text=f'Type {contactor} | {DAC_ct} DAC | {init_speed}:{low_speed} kg/h Compressor Flow Rate',
+            x=0.475,
+            y=1.1,
+            xref='paper',
+            xanchor = 'center',
+            yanchor = 'top',
+            yref='paper',
+            showarrow=False,
+            font=dict(
+                size=16,
+                color='black',
+                family = 'Arial, sans-serif'
+            )
+        ),
+
+    
+    ],
+      images=[dict(
+            source='https://assets-global.website-files.com/63c8119087b31650e9ba22d1/63c8119087b3160b9bba2367_logo_black.svg',  # Replace with your image URL or local path
+            xref='paper', yref='paper',
+            x=.95, y=1.1,
+            sizex=0.1, sizey=0.1,
+            xanchor='center', yanchor='bottom'
+        )]
+    )
+
+###################################################################################################################################################################
+# Day Based Bladder Mass Difference Total
+    diffBladderTbl = minuteBladderTbl[["Formatted Timestamp", "Date", "rateDifference"]].groupby("Date").agg("sum").reset_index()
+
+    diffFigBar = px.bar(diffBladderTbl, x = "Date", y = "rateDifference", title = "Total Difference in CO2 (kg)",  template = "plotly_white")
+
+    diffFigBar.update_layout(
+      yaxis_title="Mass difference (kg)",
+      title={
+          'text': f'<b>Total Difference in CO2 (kg)</b>',
+          'y':.95,
+          'x':0.5,
+          'xanchor': 'center',
+          'yanchor': 'top',
+          'font': {
+              'size': 24,
+              'family': 'Arial, sans-serif',
+
+          }
+      }
+      ,
+      legend=dict(font=dict(size= 15)),
+
+      xaxis = dict(tickfont=dict(
+            size=15,  # Increase the font size here
+            color='black'
+        ),
+      titlefont=dict(
+            size=20,  # Increase the font size here
+            color='black'
+        )),
+       yaxis = dict(
+         range = [0, None],
+         tickfont=dict(
+            size=15,  # Increase the font size here
+            color='black'
+        ),
+      titlefont=dict(
+            size=20,  # Increase the font size here
+            color='black'
+        )),
+
+      annotations=[
+        dict(
+            text=f'Type {contactor} | {DAC_ct} DAC | {init_speed}:{low_speed} kg/h Compressor Flow Rate | <b>Assumes 0 Compressor Shutdowns</b>',
+            x=0.475,
+            y=1.1,
+            xref='paper',
+            xanchor = 'center',
+            yanchor = 'top',
+            yref='paper',
+            showarrow=False,
+            font=dict(
+                size=16,
+                color='black',
+                family = 'Arial, sans-serif'
+            )
+        ),
+
+    
+    ],
+      images=[dict(
+            source='https://assets-global.website-files.com/63c8119087b31650e9ba22d1/63c8119087b3160b9bba2367_logo_black.svg',  # Replace with your image URL or local path
+            xref='paper', yref='paper',
+            x=.95, y=1.1,
+            sizex=0.1, sizey=0.1,
+            xanchor='center', yanchor='bottom'
+        )]
+    )
+  
     #minuteBladderCapacityFig.show()
     st.plotly_chart(minuteBladderCapacityFig, use_container_width=True)
 
     st.dataframe(diffBladderTbl["rateDifference"][lambda x: x > 0].describe())
     st.plotly_chart(diffFig, use_container_width=True)
-
+    st.plotly_chart(diffFigBar, use_container_width=True)
     # Adding Production line to fig
     #fig.add_trace(go.Scatter(x = minuteBladderTbl["Formatted Timestamp"], y = minuteBladderTbl["Interpolated_Value"], mode = 'markers'))
 
@@ -631,8 +706,7 @@ def volFlowEstimation(df, weatherData, DAC_ct=1, daterange=['2023-06-01', '2024-
     #               }).show()
       
 
-    # Making day based bar chart of frequency of on off
-    minuteBladderTbl["Date"] = minuteBladderTbl["Timestamp"].dt.date.astype(str)
+
     dailyFreqTable = pd.pivot_table(minuteBladderTbl, columns = ["OnOff"], index = ["Date"], aggfunc = "size").reset_index().fillna(0)
 
     freqBar.add_trace(go.Bar(x=dailyFreqTable["Date"], y=dailyFreqTable["Turned Off"].astype(int), marker_color = 'darkred', name = "Turned Off"))
