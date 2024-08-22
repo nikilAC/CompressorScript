@@ -58,7 +58,8 @@ def get_drive_data(weatherDataFile):
 def adjust_bladder_capacity_large(df, init_speed, min_capacity_pct, capacity_flip_pct, bladder_mass, initial_capacity=0):
 
 
-
+    # Slowest mass flow that compressor can do
+    lower_capacity_rate = 32.04
 
     capacity = initial_capacity
     minute_capacity = initial_capacity
@@ -67,7 +68,7 @@ def adjust_bladder_capacity_large(df, init_speed, min_capacity_pct, capacity_fli
     first = True
     curOn = False
     minute_decrement_added = init_speed / 60
-    low_decrement = np.round(32.04/60, 2)
+    low_decrement = np.round(lower_capacity_rate/60, 2)
 
     # Add date column so we can filter data to only include dates that are actually in our RH data.
     df["Date"] = pd.to_datetime(df['Timestamp']).dt.date
@@ -137,6 +138,7 @@ def adjust_bladder_capacity_large(df, init_speed, min_capacity_pct, capacity_fli
           minute_capacity = min(bladder_mass, minute_capacity + added_value)
           # Set Decrement to highest possible value
           minute_decrement_added = init_speed / 60
+
           nonzeroDecrement = init_speed / 60
           #df_minutes["OnOff"].iloc[i + 1] = "Compressor On"
           if curOn: 
@@ -158,6 +160,7 @@ def adjust_bladder_capacity_large(df, init_speed, min_capacity_pct, capacity_fli
     df_minutes["OnOff"] = pd.Series(onOffList)
     rateDiff = pd.Series(rateDiff)
     df_minutes["rateDifference"] = rateDiff
+    df_minutes["RecircPct"] = (rateDiff / lower_capacity_rate) * 100
     #df_minutes["Bladder Capacity"].iloc[len(df_minutes) - 1] = 0  # Last row capacity set to 0 by default
     
 
@@ -618,10 +621,11 @@ def volFlowEstimation(df, weatherData, DAC_ct=1, daterange=['2023-06-01', '2024-
     )
 
 ###################################################################################################################################################################
-# Day Based Bladder Mass Difference Total
-    diffBladderTbl = minuteBladderTbl[["Formatted Timestamp", "Date", "rateDifference"]].groupby("Date").agg("sum").reset_index()
 
-    diffFigBar = px.bar(diffBladderTbl, x = "Date", y = "rateDifference", title = "Total Difference in CO2 (kg)",  template = "plotly_white")
+# Day Based Bladder Mass Difference Total
+    diffBladderDateTbl = minuteBladderTbl[["Formatted Timestamp", "Date", "rateDifference"]].groupby("Date").agg("sum").reset_index().query('rateDifference >= 0')
+  
+    diffFigBar = px.bar(diffBladderDateTbl, x = "Date", y = "rateDifference", title = "Total Difference in CO2 (kg)",  template = "plotly_white")
 
     diffFigBar.update_layout(
       yaxis_title="Mass difference (kg)",
@@ -686,13 +690,98 @@ def volFlowEstimation(df, weatherData, DAC_ct=1, daterange=['2023-06-01', '2024-
             xanchor='center', yanchor='bottom'
         )]
     )
-  
+###################################################################################################################################################################
+
+# Day Based Bladder Mass Difference Total
+    recirculationTbl = minuteBladderTbl[["Formatted Timestamp", "HourTime", "RecircPct"]].groupby("HourTime").agg("sum").reset_index()
+
+    # Filter for non-negative values
+    recirculationTbl = recirculationTbl.query('RecircPct > 0')
+    recirculationScatter = px.bar(recirculationTbl, x = "HourTime", y = "RecircPct", title = "Per Hour (%) Of Recirculated CO2 ",  template = "plotly_white")
+
+    recirculationScatter.update_layout(
+      yaxis_title="Recirculation (%)",
+      xaxis_title = "Time",
+      title={
+          'text': f'<b>Per Hour (%) Of Recirculated CO2(kg)</b>',
+          'y':.95,
+          'x':0.5,
+          'xanchor': 'center',
+          'yanchor': 'top',
+          'font': {
+              'size': 24,
+              'family': 'Arial, sans-serif',
+
+          }
+      }
+      ,
+      legend=dict(font=dict(size= 15)),
+      
+      xaxis = dict(tickfont=dict(
+            size=15,  # Increase the font size here
+            color='black'
+        ),
+      titlefont=dict(
+            size=20,  # Increase the font size here
+            color='black'
+        )),
+       yaxis = dict(
+         range = [0, None],
+         tickfont=dict(
+            size=15,  # Increase the font size here
+            color='black'
+        ),
+      titlefont=dict(
+            size=20,  # Increase the font size here
+            color='black'
+        )),
+
+      annotations=[
+        dict(
+            text=f'Type {contactor} | {DAC_ct} DAC | {init_speed}:{low_speed} kg/h Compressor Flow Rate | <b>Assumes 0 Compressor Shutdowns</b>',
+            x=0.475,
+            y=1.1,
+            xref='paper',
+            xanchor = 'center',
+            yanchor = 'top',
+            yref='paper',
+            showarrow=False,
+            font=dict(
+                size=16,
+                color='black',
+                family = 'Arial, sans-serif'
+            )
+        ),
+
+    
+    ],
+      images=[dict(
+            source='https://assets-global.website-files.com/63c8119087b31650e9ba22d1/63c8119087b3160b9bba2367_logo_black.svg',  # Replace with your image URL or local path
+            xref='paper', yref='paper',
+            x=.95, y=1.1,
+            sizex=0.1, sizey=0.1,
+            xanchor='center', yanchor='bottom'
+        )]
+    )
+
+##################################################################################################################################
+
     #minuteBladderCapacityFig.show()
     st.plotly_chart(minuteBladderCapacityFig, use_container_width=True)
 
-    st.dataframe(diffBladderTbl["rateDifference"][lambda x: x > 0].describe())
     st.plotly_chart(diffFig, use_container_width=True)
+
+    st.write("Total Difference Summary Statistics")
+    st.dataframe(diffBladderDateTbl["rateDifference"].describe())
     st.plotly_chart(diffFigBar, use_container_width=True)
+
+    
+    # Summary Statistics
+    st.write("Recirculation Percentage Summary Statistics")
+    st.dataframe(recirculationTbl["RecircPct"].describe())
+
+    st.plotly_chart(recirculationScatter, use_container_width=True)
+
     # Adding Production line to fig
     #fig.add_trace(go.Scatter(x = minuteBladderTbl["Formatted Timestamp"], y = minuteBladderTbl["Interpolated_Value"], mode = 'markers'))
 
@@ -912,8 +1001,8 @@ st.session_state['end date'] = end_date
 
 with st.form(key = "Standard User Input"):
   dacCT = st.sidebar.number_input("Number of DAC Units", value = 8)
-  minPctShutoff = st.sidebar.number_input("Minimum % Capacity Before Compressor Shutoff", value=10)
-  maxPctTurndown = st.sidebar.number_input("Maximum % Capacity Before 50% Compressor Turndown", value=90)
+  minPctShutoff = st.sidebar.number_input("Minimum % Capacity Before Compressor Shutoff", min_value = 0, max_value = 99, value=0)
+  maxPctTurndown = st.sidebar.number_input("Maximum % Capacity Before 50% Compressor Turndown", min_value = 1, max_value = 100, value=95)
   bladderVol = st.sidebar.number_input("Specify Bladder Mass (in kg)", value=42.47)
   # DOING IT WITHOUT STREAMLIT rhPath = input("Enter RH and Temperature File (.csv or .xlsx)")
   if st.form_submit_button("Generate"):
